@@ -43,7 +43,7 @@ if (typeof window !== "undefined" && L.Icon.Default.prototype._getIconUrl) {
 }
 
 const Dashboard = ({ user, onLogout }) => {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [selectedSeverity, setSelectedSeverity] = useState("All");
   const [activeTab, setActiveTab] = useState("map");
   const [damageData, setDamageData] = useState([]);
   const [stats, setStats] = useState({
@@ -54,83 +54,6 @@ const Dashboard = ({ user, onLogout }) => {
   });
   const [dataLoaded, setDataLoaded] = useState(false);
 
-  // Demo data for fallback when API is not available
-  const demoDamages = [
-    {
-      id: 1,
-      type: "Pothole",
-      severity: "Critical",
-      location: "Main Street",
-      coords: [28.6139, 77.209],
-      description: "Large pothole causing traffic disruption",
-      reportedDate: "2024-01-15",
-      status: "Pending",
-    },
-    {
-      id: 2,
-      type: "Crack",
-      severity: "High",
-      location: "Highway 42",
-      coords: [19.076, 72.8777],
-      description: "Longitudinal crack on highway overpass",
-      reportedDate: "2024-01-18",
-      status: "In Progress",
-    },
-    {
-      id: 3,
-      type: "Blocked Drainage",
-      severity: "Medium",
-      location: "Chennai Road",
-      coords: [13.0827, 80.2707],
-      description: "Drainage system blocked after heavy rain",
-      reportedDate: "2024-01-20",
-      status: "In Progress",
-    },
-    {
-      id: 4,
-      type: "Edge Break",
-      severity: "Low",
-      location: "Kolkata Street",
-      coords: [22.5726, 88.3639],
-      description: "Minor edge deterioration on residential road",
-      reportedDate: "2024-01-22",
-      status: "Completed",
-    },
-  ];
-
-  const menuItems = [
-    { id: 1, name: "CCTV Monitoring", icon: "📹", status: "Active" },
-    { id: 2, name: "Sensor Feed", icon: "📡", status: "Active" },
-    { id: 3, name: "Drone Patrol", icon: "🚁", status: "Maintenance" },
-    { id: 4, name: "Emergency Alerts", icon: "🚨", status: "Active" },
-  ];
-
-  const recentActivity = [
-    {
-      id: 1,
-      action: "New pothole reported near Main Street",
-      time: "5 mins ago",
-      priority: "High",
-    },
-    {
-      id: 2,
-      action: "Maintenance team dispatched to Highway 42",
-      time: "20 mins ago",
-      priority: "Critical",
-    },
-    {
-      id: 3,
-      action: "Sensor data sync completed",
-      time: "1 hour ago",
-      priority: "Low",
-    },
-  ];
-
-  //   useEffect(() => {
-  //     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-  //     return () => clearInterval(timer);
-  //   }, []);
-
   useEffect(() => {
     if (!dataLoaded) {
       fetchDamageData();
@@ -140,7 +63,7 @@ const Dashboard = ({ user, onLogout }) => {
 
   const fetchDamageData = useCallback(async () => {
     try {
-      const response = await fetch("http://localhost:5000/api/damages", {
+      const response = await fetch("http://localhost:5000/api/damages/fetch-damages", {
         headers: {
           Authorization: `Bearer ${localStorage.getItem("authToken")}`,
         },
@@ -149,13 +72,12 @@ const Dashboard = ({ user, onLogout }) => {
         const data = await response.json();
         setDamageData(data);
       } else {
-        // Fallback to demo data if API fails
-        setDamageData(demoDamages);
+        // retrun data not fetched
+        console.error("Failed to fetch damage data, using demo data.");
       }
     } catch (error) {
       console.error("Error fetching damage data:", error);
       // Use demo data as fallback
-      setDamageData(demoDamages);
     } finally {
       setDataLoaded(true);
     }
@@ -185,7 +107,7 @@ const Dashboard = ({ user, onLogout }) => {
   }, [damageData]);
 
   const calculateStatsFromData = useCallback(() => {
-    const currentData = damageData.length > 0 ? damageData : demoDamages;
+    const currentData = damageData;
     setStats({
       totalDamages: currentData.length,
       criticalDamages: currentData.filter(
@@ -279,14 +201,52 @@ const Dashboard = ({ user, onLogout }) => {
   );
 
   const MapView = () => {
+
+    const [mapStyle, setMapStyle] = useState("cartoLight");
+
+    // Define available styles
+    const tileLayers = {
+      osm: {
+        url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/">OSM</a> contributors',
+      },
+      cartoLight: {
+        url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/">OSM</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+      },
+      cartoDark: {
+        url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/">OSM</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+      },
+      esri: {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+        attribution: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>',
+      },
+      esriSatellite: {
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attribution: 'Tiles &copy; <a href="https://www.esri.com/">Esri</a>',
+      },
+    };
+
+
     const currentData = useMemo(
-      () => (damageData.length > 0 ? damageData : demoDamages),
+      () => (damageData),
       [damageData]
     );
 
+    const filteredData = useMemo(() => {
+      if (selectedSeverity === "All") return currentData;
+      return currentData.filter(
+        (d) => d.severity?.toLowerCase() === selectedSeverity.toLowerCase()
+      );
+    }, [currentData, selectedSeverity]);
+
+
     // Memoize the markers to prevent recreation
     const markers = useMemo(() => {
-      return currentData.map((damage) => (
+      return filteredData.map((damage) => (
         <Marker
           key={`marker-${damage.id}`}
           position={damage.coords}
@@ -355,83 +315,55 @@ const Dashboard = ({ user, onLogout }) => {
           </Popup>
         </Marker>
       ));
-    }, [currentData, createCustomIcon, getSeverityBadgeColor, getStatusColor]);
+    }, [filteredData, createCustomIcon, getSeverityBadgeColor, getStatusColor]);
 
     return (
       <div className="h-full flex flex-col bg-gray-50">
-        {/* Quick Stats Bar */}
-        <div className="bg-white border-b border-gray-200 p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">
-                  Total Damages
-                </p>
-                <p className="text-xl font-bold text-gray-900">
-                  {stats.totalDamages}
-                </p>
-              </div>
-            </div>
 
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">
-                  Critical Issues
-                </p>
-                <p className="text-xl font-bold text-red-600">
-                  {stats.criticalDamages}
-                </p>
-              </div>
-            </div>
+        <div className="bg-white border-b border-gray-200 p-3">
+          <label className="mr-2 text-sm font-medium text-gray-700">
+            Select Map Style:
+          </label>
+          <select
+            value={mapStyle}
+            onChange={(e) => setMapStyle(e.target.value)}
+            className="border rounded p-1 text-sm"
+          >
+            <option value="osm">Default OSM</option>
+            <option value="cartoLight">Carto Light</option>
+            <option value="cartoDark">Carto Dark</option>
+            <option value="esri">Esri Streets</option>
+            <option value="esriSatellite">Esri Satellite</option>
+          </select>
+          <label className="ml-4 mr-2 text-sm font-medium text-gray-700">
+            Filter by Severity:
+          </label>
+          <select
+            value={selectedSeverity}
+            onChange={(e) => setSelectedSeverity(e.target.value)}
+            className="border rounded p-1 text-sm"
+          >
+            <option value="All">All</option>
+            <option value="Critical">Critical</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
 
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">
-                  Recent Reports
-                </p>
-                <p className="text-xl font-bold text-orange-600">
-                  {stats.recentReports}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <div className="w-5 h-5 bg-green-600 rounded-full flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">✓</span>
-                </div>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Resolved</p>
-                <p className="text-xl font-bold text-green-600">
-                  {stats.resolvedIssues}
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
-
         {/* Map Container */}
         <div className="flex-1 relative">
+
           <MapContainer
-            center={[22.9734, 78.6569]} // center of India
-            zoom={5}
+            center={[22.2950, 73.2000]} // Vadodara
+            zoom={13.5} // good for city-level view
             style={{ height: "100%", width: "100%" }}
             className="z-0"
-            key="damage-map" // Fixed key to prevent recreation
+            key="damage-map"
           >
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution={tileLayers[mapStyle].attribution}
+              url={tileLayers[mapStyle].url}
             />
             {markers}
           </MapContainer>
@@ -465,9 +397,57 @@ const Dashboard = ({ user, onLogout }) => {
 
   const AnalyticsView = () => {
     const currentData = useMemo(
-      () => (damageData.length > 0 ? damageData : demoDamages),
+      () => (damageData),
       [damageData]
     );
+    const [searchTerm, setSearchTerm] = useState("");
+    const [severityFilter, setSeverityFilter] = useState("All");
+    const [typeFilter, setTypeFilter] = useState("All");
+    const [sortBy, setSortBy] = useState("date-desc");
+
+    const filteredData = useMemo(() => {
+      let data = [...currentData];
+
+      // 🔍 Search by location or type
+      if (searchTerm) {
+        const lower = searchTerm.toLowerCase();
+        data = data.filter(
+          (d) =>
+            d.location.toLowerCase().includes(lower) ||
+            d.type.toLowerCase().includes(lower)
+        );
+      }
+
+      // ⚡ Filter by severity
+      if (severityFilter !== "All") {
+        data = data.filter((d) => d.severity === severityFilter);
+      }
+
+      // 🎯 Filter by type
+      if (typeFilter !== "All") {
+        data = data.filter((d) => d.type === typeFilter);
+      }
+
+      // 📊 Sorting
+      if (sortBy === "date-asc") {
+        data.sort((a, b) => new Date(a.reportedDate) - new Date(b.reportedDate));
+      } else if (sortBy === "date-desc") {
+        data.sort((a, b) => new Date(b.reportedDate) - new Date(a.reportedDate));
+      } else if (sortBy === "severity-asc") {
+        const sevOrder = ["Low", "Medium", "High", "Critical"];
+        data.sort(
+          (a, b) => sevOrder.indexOf(a.severity) - sevOrder.indexOf(b.severity)
+        );
+      } else if (sortBy === "severity-desc") {
+        const sevOrder = ["Low", "Medium", "High", "Critical"];
+        data.sort(
+          (a, b) => sevOrder.indexOf(b.severity) - sevOrder.indexOf(a.severity)
+        );
+      }
+
+      return data;
+    }, [currentData, searchTerm, severityFilter, typeFilter, sortBy]);
+
 
     // Memoize analytics calculations to prevent recalculation on every render
     const analyticsData = useMemo(() => {
@@ -509,15 +489,78 @@ const Dashboard = ({ user, onLogout }) => {
     }, [currentData, getSeverityColor]);
 
     // Static monthly trend data to prevent recreation
-    const monthlyTrendData = useMemo(
-      () => [
-        { month: "Oct", damages: 8 },
-        { month: "Nov", damages: 12 },
-        { month: "Dec", damages: 15 },
-        { month: "Jan", damages: currentData.length },
-      ],
-      [currentData.length]
-    );
+    const [endIndex, setEndIndex] = useState(0); // offset for pagination
+
+    const monthlyTrendData = useMemo(() => {
+      if (!currentData || currentData.length === 0) return [];
+
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+      // count damages grouped by year+month
+      const counts = {};
+      currentData.forEach((item) => {
+        if (!item.reportedDate) return;
+        const date = new Date(item.reportedDate);
+        if (isNaN(date)) return;
+        const key = `${date.getFullYear()}-${date.getMonth()}`; // e.g. 2025-8
+        counts[key] = (counts[key] || 0) + 1;
+      });
+
+      // build a list of all months up to current
+      const now = new Date();
+      const months = [];
+      for (let y = 2020; y <= now.getFullYear(); y++) {
+        for (let m = 0; m < 12; m++) {
+          if (y > now.getFullYear() || (y === now.getFullYear() && m > now.getMonth())) {
+            break; // don't include future months
+          }
+          months.push({ key: `${y}-${m}`, label: `${monthNames[m]} ${y}`, damages: counts[`${y}-${m}`] || 0 });
+        }
+      }
+
+      // slice last 3 months based on endIndex
+      const sliceEnd = months.length - endIndex;
+      const sliceStart = Math.max(0, sliceEnd - 6);
+      return months.slice(sliceStart, sliceEnd);
+    }, [currentData, endIndex]);
+
+    const handleDownload = () => {
+      if (!filteredData || filteredData.length === 0) {
+        alert("No data to download!");
+        return;
+      }
+
+      // Define headers
+      const headers = ["ID", "Type", "Location", "Severity", "Status", "Reported Date"];
+
+      // Build CSV rows with formatted dates
+      const rows = filteredData.map(d => [
+        d.id,
+        d.type,
+        d.location,
+        d.severity,
+        d.status,
+        d.reportedDate
+          ? new Date(d.reportedDate).toLocaleDateString("en-GB") // 👉 dd/mm/yyyy
+          : "N/A"
+      ]);
+
+      const csvContent =
+        [headers, ...rows]
+          .map(row => row.map(value => `"${value}"`).join(",")) // wrap each cell in quotes
+          .join("\n");
+
+      // Create blob and trigger download
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "damage_reports.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
 
     return (
       <div className="h-full bg-gray-50 p-6 overflow-y-auto">
@@ -574,14 +617,31 @@ const Dashboard = ({ user, onLogout }) => {
 
         {/* Monthly Trend */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h3 className="text-lg font-semibold mb-4 flex items-center">
-            <TrendingUp className="mr-2 text-green-600" />
-            Monthly Damage Reports Trend
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold flex items-center">
+              <TrendingUp className="mr-2 text-green-600" />
+              Monthly Damage Reports Trend
+            </h3>
+            <div className="space-x-2">
+              <button
+                onClick={() => setEndIndex((prev) => Math.min(prev + 1, 100))}
+                className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"
+              >
+                ←
+              </button>
+              <button
+                onClick={() => setEndIndex((prev) => Math.max(prev - 1, 0))}
+                className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"
+                disabled={endIndex === 0}
+              >
+                →
+              </button>
+            </div>
+          </div>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={monthlyTrendData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
+              <XAxis dataKey="label" />
               <YAxis />
               <Tooltip />
               <Line
@@ -594,42 +654,69 @@ const Dashboard = ({ user, onLogout }) => {
           </ResponsiveContainer>
         </div>
 
-        {/* System Status Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {menuItems.map((item) => (
-            <div
-              key={item.id}
-              className={`p-4 border-2 rounded-lg flex items-center gap-3 transition-all cursor-pointer hover:border-blue-500 hover:transform hover:-translate-y-1 hover:shadow-lg ${
-                item.status === "Maintenance"
-                  ? "opacity-60 cursor-not-allowed hover:transform-none border-red-200 bg-red-50"
-                  : "border-gray-200 bg-white hover:bg-blue-50"
-              }`}
-            >
-              <div className="text-2xl">{item.icon}</div>
-              <div className="flex-1">
-                <h3 className="text-gray-900 text-sm font-medium m-0">
-                  {item.name}
-                </h3>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full font-medium uppercase ${
-                    item.status === "Active"
-                      ? "bg-green-100 text-green-800"
-                      : "bg-red-100 text-red-800"
-                  }`}
-                >
-                  {item.status}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
 
         {/* Data Table */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h3 className="text-lg font-semibold mb-4 flex items-center">
-            <Eye className="mr-2 text-purple-600" />
-            Detailed Damage Reports
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+
+            <h3 className="text-lg font-semibold mb-4 flex items-center">
+              <Eye className="mr-2 text-purple-600" />
+              Detailed Damage Reports
+            </h3>
+            <div className="flex flex-wrap gap-4 mb-4 items-center">
+              {/* 🔍 Search */}
+              <input
+                type="text"
+                placeholder="Search by location or type..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="border rounded px-3 py-2 text-sm w-60"
+              />
+
+              {/* ⚡ Severity Filter */}
+              <select
+                value={severityFilter}
+                onChange={(e) => setSeverityFilter(e.target.value)}
+                className="border rounded px-3 py-2 text-sm"
+              >
+                <option value="All">All Severities</option>
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Critical">Critical</option>
+              </select>
+
+              {/* 🎯 Type Filter */}
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="border rounded px-3 py-2 text-sm"
+              >
+                <option value="All">All Types</option>
+                {[...new Set(currentData.map((d) => d.type))].map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+
+              {/* 📊 Sorting */}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="border rounded px-3 py-2 text-sm"
+              >
+                <option value="date-desc">Date (Newest First)</option>
+                <option value="date-asc">Date (Oldest First)</option>
+                <option value="severity-desc">Severity (High → Low)</option>
+                <option value="severity-asc">Severity (Low → High)</option>
+              </select>
+
+              {/* 🔢 Results Count */}
+              <span className="text-gray-600 text-sm">
+                Results: {filteredData.length}
+              </span>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="min-w-full table-auto">
               <thead className="bg-gray-50">
@@ -655,7 +742,7 @@ const Dashboard = ({ user, onLogout }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {currentData.map((damage) => (
+                {filteredData.map((damage) => (
                   <tr key={damage.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">
                       #{damage.id}
@@ -685,42 +772,22 @@ const Dashboard = ({ user, onLogout }) => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {damage.reportedDate || "N/A"}
+                      {damage.reportedDate
+                        ? new Date(damage.reportedDate).toISOString().split("T")[0].split("-").reverse().join("/")
+                        : "N/A"}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h3 className="text-lg font-semibold mb-4 flex items-center">
-            <Activity className="mr-2 text-indigo-600" />
-            Recent Activity
-          </h3>
-          <div className="space-y-4">
-            {recentActivity.map((activity) => (
-              <div
-                key={activity.id}
-                className="p-4 border-l-4 border-blue-200 bg-blue-50 rounded-lg flex justify-between items-center"
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={handleDownload}
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
               >
-                <div className="flex-1">
-                  <p className="text-gray-900 text-sm m-0 mb-1">
-                    {activity.action}
-                  </p>
-                  <span className="text-gray-600 text-xs">{activity.time}</span>
-                </div>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full font-medium uppercase ml-3 ${getPriorityClasses(
-                    activity.priority
-                  )}`}
-                >
-                  {activity.priority}
-                </span>
-              </div>
-            ))}
+                ⬇ Download CSV
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -733,9 +800,6 @@ const Dashboard = ({ user, onLogout }) => {
       <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center">
-              <span className="text-white text-lg">🛣️</span>
-            </div>
             <div>
               <h1 className="text-xl font-bold text-slate-800">
                 Road Damage Detection System
@@ -770,11 +834,10 @@ const Dashboard = ({ user, onLogout }) => {
               <li>
                 <button
                   onClick={() => setActiveTab("map")}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-                    activeTab === "map"
-                      ? "bg-blue-600 text-white"
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${activeTab === "map"
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <MapPin className="w-5 h-5" />
                   <span className="font-medium">Damage Map</span>
@@ -783,11 +846,10 @@ const Dashboard = ({ user, onLogout }) => {
               <li>
                 <button
                   onClick={() => setActiveTab("analytics")}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-                    activeTab === "analytics"
-                      ? "bg-blue-600 text-white"
-                      : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${activeTab === "analytics"
+                    ? "bg-blue-600 text-white"
+                    : "text-gray-700 hover:bg-gray-100"
+                    }`}
                 >
                   <TrendingUp className="w-5 h-5" />
                   <span className="font-medium">Analytics</span>
